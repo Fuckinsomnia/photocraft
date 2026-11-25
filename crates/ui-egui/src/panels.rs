@@ -1683,12 +1683,13 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.painter().line_segment([pos2(x, r.top() - 8.0), pos2(x, r.bottom() + 8.0)], Stroke::new(1.0, t.separator));
                 ui.spacing_mut().item_spacing.y = 4.0;
                 use crate::dock::Group;
-                let entries: [(&str, &str, Group); 5] = [
+                let entries: [(&str, &str, Group); 6] = [
                     ("sliders-horizontal", tl!("Properties"), Group::Properties),
                     ("navigation", tl!("Navigator"), Group::Navigator),
                     ("palette", tl!("Color & Swatches"), Group::Color),
                     ("layers", tl!("Layers"), Group::Layers),
                     ("clock", tl!("History"), Group::History),
+                    ("sparkles", tl!("AI Agent Panel"), Group::AiAgent),
                 ];
                 for (icon, name, g) in entries {
                     // Studio floats Properties outside the dock.
@@ -1733,6 +1734,7 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
         (Group::Navigator, p.navigator),
         (Group::History, p.history),
         (Group::Layers, p.layers),
+        (Group::AiAgent, p.ai_agent),
     ]
     .into_iter()
     .filter_map(|(g, on)| on.then_some(g))
@@ -1774,6 +1776,7 @@ pub(crate) fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate
         (Group::Layers, 0) => layers(app, ui),
         (Group::Layers, 1) => channels(app, ui),
         (Group::Layers, _) => crate::vector_ui::paths_panel(app, ui),
+        (Group::AiAgent, _) => crate::ai_agent::panel(app, ui),
     }
 }
 
@@ -5446,6 +5449,24 @@ mod embedding_tests {
         m.remove("menu_bar");
         let p: crate::state::Panels = serde_json::from_value(v).unwrap();
         assert!(p.rail && p.menu_bar);
+    }
+
+    /// The rail's AI Agent button reveals the dock group, then collapses it to its tab strip.
+    #[test]
+    fn rail_button_reveals_then_collapses_the_ai_agent_group() {
+        let mut h = whole_app(true, false);
+        assert!(!h.state().ui.panels.ai_agent);
+        h.get_by_label("AI Agent Panel").click();
+        h.run_steps(2);
+        assert!(h.state().ui.panels.ai_agent, "the rail button opens the group");
+        assert!(!h.state().ui.dock.is_collapsed(crate::dock::Group::AiAgent));
+        h.get_by_label("AI Agent Panel").click();
+        h.run_steps(2);
+        assert!(h.state().ui.panels.ai_agent, "a docked group is never hidden from the rail");
+        assert!(h.state().ui.dock.is_collapsed(crate::dock::Group::AiAgent), "the rail button collapses the group");
+        h.get_by_label("AI Agent Panel").click();
+        h.run_steps(2);
+        assert!(!h.state().ui.dock.is_collapsed(crate::dock::Group::AiAgent), "the rail button expands it again");
     }
 }
 

@@ -3842,3 +3842,8 @@ curves	Smooth	Εξομάλυνση
 	Sent to {printer}	Στάλθηκε στον {printer}
 	set in Print Settings…	ορίζεται στις ρυθμίσεις εκτύπωσης…
 	ICO is limited to 256 × 256 pixels	Το ICO περιορίζεται σε 256 × 256 εικονοστοιχεία
+	AI Agent	Πράκτορας AI
+	AI Agent Panel	Πίνακας πράκτορα AI
+	Connect Agent	Σύνδεση πράκτορα
+	Disconnect Agent	Αποσύνδεση πράκτορα
+	Refresh Agent List	Ανανέωση λίστας πρακτόρων

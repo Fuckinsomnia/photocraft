@@ -66,6 +66,9 @@ fn main() {
     let custom_titlebar = args.iter().any(|a| a == "--custom-titlebar");
     // `--settle-ms N`: keep rendering frames for N ms before the capture (e.g. mid-job).
     let settle_ms: u64 = arg(&args, "--settle-ms").and_then(|s| s.parse().ok()).unwrap_or(0);
+    // `--step-delay-ms N`: render frames for N ms between script steps, so background
+    // threads started by one step (scans, fetches) finish before the next step runs.
+    let step_delay_ms: u64 = arg(&args, "--step-delay-ms").and_then(|s| s.parse().ok()).unwrap_or(0);
     let mut harness =
         egui_kittest::Harness::builder().with_size(egui::vec2(w, h)).with_pixels_per_point(scale).with_max_steps(64).wgpu().build_eframe(move |cc| {
             PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
@@ -134,6 +137,10 @@ fn main() {
             harness.step();
         }
         harness.run_steps(4);
+        let t_delay = std::time::Instant::now();
+        while t_delay.elapsed() < std::time::Duration::from_millis(step_delay_ms) {
+            harness.step();
+        }
         if timing {
             eprintln!("{:>8.1} ms  {label}", t0.elapsed().as_secs_f64() * 1000.0);
         }

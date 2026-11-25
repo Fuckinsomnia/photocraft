@@ -19,6 +19,9 @@ pub mod adjust_dialog;
 pub mod adjust_editors;
 pub mod adjust_preview;
 pub mod adjust_ui;
+pub mod agent_detect;
+pub mod ai_agent;
+pub mod ai_chat;
 mod alt_grab;
 pub mod analysis_ui;
 pub mod anchor_tools;
@@ -578,6 +581,12 @@ pub struct PhotocraftApp {
     /// The first digit of a two-digit opacity typed on the number keys (`opacity_keys`, #352).
     pub(crate) opacity_keys: opacity_keys::Pending,
     control_rx: Option<Receiver<ControlRequest>>,
+    /// In-flight AI Agent panel detection scan (`ai_agent`).
+    pub(crate) ai_agent_scan: Option<Receiver<Vec<agent_detect::DetectedAgent>>>,
+    /// In-flight AI Agent chat request (`ai_chat`).
+    pub(crate) ai_chat_rx: Option<Receiver<ai_chat::ChatEvent>>,
+    /// In-flight "Load models" fetch for the AI Agent settings form (`ai_agent`).
+    pub(crate) ai_models_rx: Option<Receiver<Result<Vec<String>, String>>>,
     pending_screenshots: Vec<(u64, Option<String>, Sender<ControlResponse>)>,
     /// Screenshots not yet requested from the viewport: (token, earliest time in ms, frames seen).
     queued_screenshots: Vec<(u64, f64, u32)>,
@@ -805,6 +814,9 @@ impl PhotocraftApp {
             caps_lock: false,
             opacity_keys: None,
             control_rx: None,
+            ai_agent_scan: None,
+            ai_chat_rx: None,
+            ai_models_rx: None,
             pending_screenshots: Vec::new(),
             queued_screenshots: Vec::new(),
             input_waiters: Vec::new(),

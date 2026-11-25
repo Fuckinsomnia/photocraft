@@ -1,7 +1,8 @@
 //! Right-dock layout (#88): panel groups with fixed heights, like Photoshop's dock columns.
 //!
 //! A group's height never follows its content: content taller than the group scrolls inside
-//! it. The last expanded group (Layers by default) fills what the others leave. Drag the gap
+//! it. The last expanded group (Layers by default, AI Agent when it sits last) fills what the
+//! others leave. Drag the gap
 //! between two groups to resize them, double-click a tab (or use the panel menu) to collapse a
 //! group to its tab strip, drag a tab strip (outside its tabs, or a tab dragged off the strip) to
 //! move the group up or down the column, and drag a tab along its strip to reorder the group's
@@ -38,11 +39,13 @@ pub enum Group {
     History,
     /// Layers | Channels | Paths.
     Layers,
+    /// AI Agent: detected agents and the connected agent's chat (one tab).
+    AiAgent,
 }
 
 impl Group {
     /// Photoshop Essentials order, top to bottom.
-    pub const ALL: [Group; 6] = [Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History, Group::Layers];
+    pub const ALL: [Group; 7] = [Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History, Group::Layers, Group::AiAgent];
 
     pub fn key(self) -> &'static str {
         match self {
@@ -52,6 +55,7 @@ impl Group {
             Group::Navigator => "navigator",
             Group::History => "history",
             Group::Layers => "layers",
+            Group::AiAgent => "aiAgent",
         }
     }
 
@@ -65,6 +69,7 @@ impl Group {
             Group::Navigator => 210.0,
             Group::History => 200.0,
             Group::Layers => 320.0,
+            Group::AiAgent => 320.0,
         }
     }
 
@@ -78,6 +83,7 @@ impl Group {
             Group::Navigator => 140.0,
             Group::History => 130.0,
             Group::Layers => 200.0,
+            Group::AiAgent => 200.0,
         }
     }
 
@@ -86,6 +92,7 @@ impl Group {
     pub fn preferred_fill(self) -> f32 {
         match self {
             Group::Layers => 500.0,
+            Group::AiAgent => 300.0,
             g => g.min_height(),
         }
     }
@@ -93,7 +100,7 @@ impl Group {
     /// The smallest height an expanded group can be dragged or squeezed to.
     pub fn min_height(self) -> f32 {
         match self {
-            Group::Layers => 140.0,
+            Group::Layers | Group::AiAgent => 140.0,
             _ => 80.0,
         }
     }
@@ -108,13 +115,14 @@ impl Group {
             Group::Navigator => &["Navigator", "Histogram", "Info"],
             Group::History => &["History", "Actions", "Layer Comps"],
             Group::Layers => &["Layers", "Channels", "Paths"],
+            Group::AiAgent => &["AI Agent"],
         }
     }
 
     /// Tabs that lay out their own scrolling list and footer, or size themselves to the group
     /// (the Navigator's preview grows with it, as in Photoshop: #2726).
     pub fn scrolls_itself(self, tab: usize) -> bool {
-        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::History, 1) | (Group::Navigator, 0))
+        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::History, 1) | (Group::Navigator, 0) | (Group::AiAgent, 0))
     }
 
     pub(crate) fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
@@ -125,6 +133,7 @@ impl Group {
             Group::Navigator => &mut tabs.navigator,
             Group::History => &mut tabs.history,
             Group::Layers => &mut tabs.layers,
+            Group::AiAgent => &mut tabs.ai_agent,
         }
     }
 
@@ -141,6 +150,7 @@ impl Group {
             Group::Navigator => panels.navigator,
             Group::History => panels.history,
             Group::Layers => panels.layers,
+            Group::AiAgent => panels.ai_agent,
         }
     }
 
@@ -152,6 +162,7 @@ impl Group {
             Group::Navigator => &mut panels.navigator,
             Group::History => &mut panels.history,
             Group::Layers => &mut panels.layers,
+            Group::AiAgent => &mut panels.ai_agent,
         }
     }
 }

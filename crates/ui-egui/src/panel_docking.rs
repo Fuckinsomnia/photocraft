@@ -3,6 +3,7 @@
 use crate::dock::Group;
 use craft_ui::docking::{Action, Floating, Layout, Node, Placement, Zone};
 use craft_ui::layout::{SplitAxis, SplitSize};
+use egui::pos2;
 use serde_json::{Value, json};
 
 use crate::PhotocraftApp;
@@ -25,6 +26,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("layers", "Layers", Group::Layers),
     ("channels", "Channels", Group::Layers),
     ("paths", "Paths", Group::Layers),
+    ("aiAgent", "AI Agent", Group::AiAgent),
 ];
 #[derive(Clone, Default)]
 struct LegacyDrag {
@@ -80,6 +82,7 @@ fn legacy_layout(app: &PhotocraftApp, all: bool) -> Layout<String> {
             Group::Navigator => app.ui.dock_tabs.navigator,
             Group::History => app.ui.dock_tabs.history,
             Group::Layers => app.ui.dock_tabs.layers,
+            Group::AiAgent => app.ui.dock_tabs.ai_agent,
         };
         let active = labels.get(selected).and_then(|label| normalize(label)).and_then(|id| panels.iter().position(|p| p == id)).unwrap_or(0);
         if group == Group::Properties && !pro {
@@ -432,9 +435,9 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
                 if collapsed.contains(id) {
                     craft_ui::docking::PanelLimits { min: egui::vec2(220.0, 0.0), max: egui::vec2(1_000_000.0, 0.0) }
                 } else {
-                    // Layers owns its row scroll and footer; leave room for its fixed controls
-                    // plus a scrolling row area instead of clipping the footer after a split.
-                    let height = if id == "layers" { 220.0 } else { 80.0 };
+                    // Layers and AI Agent own their scroll and footer; leave room for fixed
+                    // controls plus a scrolling area instead of clipping the footer after a split.
+                    let height = if matches!(id.as_str(), "layers" | "aiAgent") { 220.0 } else { 80.0 };
                     craft_ui::docking::PanelLimits { min: egui::vec2(220.0, height), ..Default::default() }
                 }
             },
@@ -456,6 +459,88 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
     };
     if let Some(error) = output.error {
         app.ui.status = error.to_string();
+    }
+    // craft-ui resizes a floating group only by its 12 pt corner; the edges resize it too, like
+    // an ordinary window, so a border drag is not mistaken for a move.
+    let mut edge_actions = Vec::new();
+    if !locked {
+        let screen = ui.ctx().content_rect();
+        let tab_height = if t.pro { 28.0 } else { 40.0 };
+        for group in &layout.floating {
+            let Some(first) = group.panels.first() else { continue };
+            let [x, y, w, h] = group.rect;
+            let min = if matches!(first.as_str(), "layers" | "aiAgent") { egui::vec2(220.0, 220.0) } else { egui::vec2(220.0, 80.0) };
+            // Same clamp as craft-ui's floating windows, so both Areas agree on the rect.
+            let size = egui::vec2(w, h).max(min).max(egui::vec2(1.0, 1.0)).min(screen.size());
+            let at = pos2(x, y).max(screen.min).min(screen.max - size);
+            let rect = egui::Rect::from_min_size(at, size);
+            if rect.width() < 40.0 || rect.height() < 40.0 {
+                continue;
+            }
+            let id = egui::Id::new("photocraft-panel-docking").with(("floating", first));
+            egui::Area::new(id).order(egui::Order::Middle).fixed_pos(rect.min).movable(false).constrain_to(screen).show(ui.ctx(), |ui| {
+                ui.set_min_size(rect.size());
+                let c = 14.0;
+                // The header owns its top band: the move grip sits at its left, menus at its right.
+                let side_top = rect.top() + tab_height;
+                let edges = [
+                    (
+                        "left",
+                        egui::Rect::from_min_max(pos2(rect.left(), side_top), pos2(rect.left() + 6.0, rect.bottom() - c)),
+                        egui::CursorIcon::ResizeHorizontal,
+                    ),
+                    (
+                        "right",
+                        egui::Rect::from_min_max(pos2(rect.right() - 6.0, side_top), pos2(rect.right(), rect.bottom() - c)),
+                        egui::CursorIcon::ResizeHorizontal,
+                    ),
+                    (
+                        "top",
+                        egui::Rect::from_min_max(pos2(rect.left() + c, rect.top()), pos2(rect.right() - c, rect.top() + 6.0)),
+                        egui::CursorIcon::ResizeVertical,
+                    ),
+                    (
+                        "bottom",
+                        egui::Rect::from_min_max(pos2(rect.left() + c, rect.bottom() - 6.0), pos2(rect.right() - c, rect.bottom())),
+                        egui::CursorIcon::ResizeVertical,
+                    ),
+                ];
+                for (name, edge, cursor) in edges {
+                    let response = ui.interact(edge, id.with(("edge", name)), egui::Sense::drag());
+                    let label = format!("Resize panel window {name} edge");
+                    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &label));
+                    if response.hovered() || response.dragged() {
+                        ui.ctx().set_cursor_icon(cursor);
+                        let line = if matches!(name, "left" | "right") {
+                            [edge.left_center(), edge.right_center()]
+                        } else {
+                            [pos2(edge.center().x, edge.top()), pos2(edge.center().x, edge.bottom())]
+                        };
+                        ui.painter().line_segment(line, egui::Stroke::new(2.0, t.accent));
+                    }
+                    if !response.dragged() {
+                        continue;
+                    }
+                    let d = ui.input(|i| i.pointer.delta());
+                    let mut r = rect;
+                    match name {
+                        "left" => {
+                            let right = r.right();
+                            let w = (r.width() - d.x).clamp(min.x, screen.width());
+                            r = egui::Rect::from_min_max(pos2(right - w, r.top()), pos2(right, r.bottom()));
+                        }
+                        "right" => r.set_right(r.left() + (r.width() + d.x).clamp(min.x, screen.width())),
+                        "top" => {
+                            let bottom = r.bottom();
+                            let h = (r.height() - d.y).clamp(min.y, screen.height());
+                            r = egui::Rect::from_min_max(pos2(r.left(), bottom - h), pos2(r.right(), bottom));
+                        }
+                        _ => r.set_bottom(r.top() + (r.height() + d.y).clamp(min.y, screen.height())),
+                    }
+                    edge_actions.push(Action::MoveFloating { panel: first.clone(), rect: [r.left(), r.top(), r.width(), r.height()] });
+                }
+            });
+        }
     }
     if ui.input(|input| input.pointer.any_released()) {
         if !output.actions.iter().any(|action| matches!(action, Action::Move { .. } | Action::Float { .. })) && cancel_legacy_drag(app, ui.ctx()) {
@@ -480,6 +565,11 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         }
     }
     for action in output.actions {
+        if let Err(error) = app.run("window.panel.layout", json!({"action": action})) {
+            app.ui.status = error;
+        }
+    }
+    for action in edge_actions {
         if let Err(error) = app.run("window.panel.layout", json!({"action": action})) {
             app.ui.status = error;
         }
@@ -792,6 +882,7 @@ pub(crate) fn prepare_legacy_update(
                 Group::Navigator => tabs.navigator,
                 Group::History => tabs.history,
                 Group::Layers => tabs.layers,
+                Group::AiAgent => tabs.ai_agent,
             };
             let id = group.tabs(pro).get(index).and_then(|label| normalize(label)).ok_or("dockTabs index is outside the panel group")?;
             if visibility == Some(false) {

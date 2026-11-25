@@ -43,6 +43,8 @@ flate2 = { workspace = true }
 rayon = { workspace = true }
 # Safe native UI-language APIs (Windows/macOS); no subprocess or web dependency.
 sys-locale = "=0.3.2"
+# TLS for https AI endpoints (Gemini, Claude, OpenAI, …); schannel on Windows, no extra installs.
+native-tls = "0.2"
 
 # Installed RAM for the GPU memory budget (`gpu_canvas::physical_memory`): the safe binding the
 # desktop app already uses, pinned to the same version.
