@@ -268,18 +268,45 @@ pub fn cli_prompt(messages: &[ChatMsg]) -> String {
     messages.iter().map(|m| format!("{}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n\n")
 }
 
+fn cli_launcher(program: &str) -> (&str, Option<&str>) {
+    let is_js = std::path::Path::new(program).extension().and_then(|s| s.to_str()).is_some_and(|ext| matches!(ext, "js" | "mjs"));
+    if is_js { ("node", Some(program)) } else { (program, None) }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn cli_event(status: std::process::ExitStatus, got: bool, stderr: &str) -> ChatEvent {
+    if got {
+        ChatEvent::Done
+    } else if !stderr.trim().is_empty() {
+        ChatEvent::Failed(stderr.trim().to_string())
+    } else if status.success() {
+        ChatEvent::Done
+    } else {
+        ChatEvent::Failed(format!("CLI agent exited with {status}"))
+    }
+}
+
 /// Streams a CLI agent's stdout line by line, with a watchdog so a hung agent cannot freeze
 /// the panel forever; stderr becomes the error text when the process fails without output.
 #[cfg(not(target_arch = "wasm32"))]
 fn stream_cli(program: &str, id: &str, messages: &[ChatMsg], tx: &std::sync::mpsc::Sender<ChatEvent>, ctx: &egui::Context) {
     use std::io::{BufRead, Read};
-    let mut child = match std::process::Command::new(program)
+    let (launcher, script) = cli_launcher(program);
+    let mut command = std::process::Command::new(launcher);
+    if let Some(script) = script {
+        command.arg(script);
+    }
+    command
         .args(cli_args(id, &cli_prompt(messages)))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let mut child = match command.spawn() {
         Ok(c) => c,
         Err(e) => {
             let _ = tx.send(ChatEvent::Failed(format!("Cannot run {program}: {e}")));
@@ -329,8 +356,7 @@ fn stream_cli(program: &str, id: &str, messages: &[ChatMsg], tx: &std::sync::mps
         let _ = se.read_to_string(&mut err);
     }
     let event = match status {
-        Ok(s) if s.success() || got => ChatEvent::Done,
-        Ok(s) => ChatEvent::Failed(format!("CLI agent exited with {s}: {}", err.trim())),
+        Ok(status) => cli_event(status, got, &err),
         Err(e) => ChatEvent::Failed(e.to_string()),
     };
     let _ = tx.send(event);
@@ -1230,6 +1256,22 @@ mod tests {
     }
 
     #[test]
+    fn qoder_workbuddy_and_antigravity_use_their_documented_clis() {
+        use crate::agent_detect::{AgentKind, DetectedAgent};
+        for (id, name) in [("qoder", "Qoder CLI"), ("codebuddy", "CodeBuddy CLI (WorkBuddy)"), ("agy", "Antigravity CLI")] {
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+            let ctx = egui::Context::default();
+            app.ui.ai_agent.agents =
+                vec![DetectedAgent { id: id.into(), name: name.into(), kind: AgentKind::Cli, location: format!("C:/tools/{id}.cmd"), running: true }];
+            crate::menus::invoke(&mut app, &ctx, "aiAgent.connect", serde_json::json!({"id": id})).unwrap();
+            assert_eq!(app.ui.ai_chat.agent.as_deref(), Some(id));
+            assert_eq!(app.ui.ai_chat.backend, Backend::Cli);
+            assert_eq!(app.ui.ai_chat.endpoint, format!("C:/tools/{id}.cmd"));
+            crate::menus::invoke(&mut app, &ctx, "aiAgent.disconnect", serde_json::json!({})).unwrap();
+        }
+    }
+
+    #[test]
     fn api_keys_are_not_serialized_in_ui_state() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         app.ui.ai_agent.custom_key = "dummy-custom-key".into();
@@ -1258,5 +1300,30 @@ mod tests {
         assert_eq!(cli_args("hermes", "P"), vec!["-z".to_string(), "P".to_string()]);
         assert_eq!(cli_args("codex", "P"), vec!["exec".to_string(), "--skip-git-repo-check".to_string(), "P".to_string()]);
         assert_eq!(cli_args("claude", "P"), vec!["-p".to_string(), "P".to_string()]);
+        assert_eq!(cli_args("qoder", "P"), vec!["-p".to_string(), "P".to_string()]);
+        assert_eq!(cli_args("codebuddy", "P"), vec!["-p".to_string(), "P".to_string()]);
+        assert_eq!(cli_args("agy", "P"), vec!["-p".to_string(), "P".to_string()]);
+    }
+
+    #[test]
+    fn bundled_javascript_clis_run_through_node() {
+        assert_eq!(cli_launcher("C:/WorkBuddy/codebuddy-lite-wb.mjs"), ("node", Some("C:/WorkBuddy/codebuddy-lite-wb.mjs")));
+        assert_eq!(cli_launcher("C:/WorkBuddy/codebuddy.js"), ("node", Some("C:/WorkBuddy/codebuddy.js")));
+        assert_eq!(cli_launcher("C:/Tools/agy.exe"), ("C:/Tools/agy.exe", None));
+    }
+
+    #[cfg(any(windows, unix))]
+    #[test]
+    fn successful_cli_with_only_stderr_reports_the_error() {
+        #[cfg(unix)]
+        use std::os::unix::process::ExitStatusExt;
+        #[cfg(windows)]
+        use std::os::windows::process::ExitStatusExt;
+        let status = std::process::ExitStatus::from_raw(0);
+        match cli_event(status, false, "Authentication required. Please use /login command to sign in to your account\n") {
+            ChatEvent::Failed(error) => assert!(error.contains("Authentication required"), "{error}"),
+            _ => panic!("expected stderr to fail the turn"),
+        }
+        assert!(matches!(cli_event(status, true, "warning"), ChatEvent::Done));
     }
 }

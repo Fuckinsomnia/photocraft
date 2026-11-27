@@ -23,7 +23,21 @@ pub struct DetectedAgent {
     pub running: bool,
 }
 
-const CLI_AGENTS: [(&str, &str); 4] = [("claude", "Claude Code"), ("gemini", "Gemini CLI"), ("codex", "Codex CLI"), ("hermes", "Hermes Agent")];
+const CLI_AGENTS: [(&str, &str); 7] = [
+    ("claude", "Claude Code"),
+    ("gemini", "Gemini CLI"),
+    ("codex", "Codex CLI"),
+    ("hermes", "Hermes Agent"),
+    ("qoder", "Qoder CLI"),
+    ("codebuddy", "CodeBuddy CLI (WorkBuddy)"),
+    ("agy", "Antigravity CLI"),
+];
+
+const CLI_INSTALL_FALLBACKS: [(&str, &str); 3] = [
+    ("qoder", ".qoder/bin/qodercli/qodercli.exe"),
+    ("codebuddy", "AppData/Local/Programs/WorkBuddyAI/resources/app.asar.unpacked/cli/dist/codebuddy-lite-wb.mjs"),
+    ("agy", ".gemini/bin/agy.exe"),
+];
 
 /// (id, name, port, PATH binary, install fallback relative to the user profile).
 const SERVER_AGENTS: [(&str, &str, u16, &str, &str); 2] = [
@@ -53,10 +67,19 @@ pub fn server_up(endpoint: &str) -> bool {
     }
 }
 
+fn cli_install_fallback(id: &str, profile: &Path, path_var: &str) -> Option<PathBuf> {
+    let (_, rel) = CLI_INSTALL_FALLBACKS.iter().find(|(agent, _)| *agent == id)?;
+    if id == "codebuddy" && find_on_path(path_var, "node").is_none() {
+        return None;
+    }
+    let p = profile.join(rel);
+    p.is_file().then_some(p)
+}
+
 pub fn detect_with(path_var: &str, profile: &Path, probe: impl Fn(&str) -> bool) -> Vec<DetectedAgent> {
     let mut out = Vec::new();
     for (id, name) in CLI_AGENTS {
-        if let Some(p) = find_on_path(path_var, id) {
+        if let Some(p) = find_on_path(path_var, id).or_else(|| cli_install_fallback(id, profile, path_var)) {
             out.push(DetectedAgent { id: id.into(), name: name.into(), kind: AgentKind::Cli, location: p.display().to_string(), running: true });
         }
     }
@@ -107,14 +130,45 @@ mod tests {
         let dir = scratch_dir("path");
         std::fs::write(dir.join("claude.cmd"), b"@echo off").unwrap();
         std::fs::write(dir.join("gemini"), b"#!/bin/sh").unwrap();
+        std::fs::write(dir.join("qoder.cmd"), b"@echo off").unwrap();
+        std::fs::write(dir.join("codebuddy.exe"), b"").unwrap();
+        std::fs::write(dir.join("agy"), b"#!/bin/sh").unwrap();
         let path = std::env::join_paths([dir.as_path()]).unwrap().into_string().unwrap();
         assert!(find_on_path(&path, "claude").is_some());
         assert!(find_on_path(&path, "gemini").is_some());
         assert!(find_on_path(&path, "codex").is_none());
         let agents = detect_with(&path, &dir, |_| false);
         let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, ["claude", "gemini"]);
+        assert_eq!(ids, ["claude", "gemini", "qoder", "codebuddy", "agy"]);
+        assert_eq!(agents.iter().find(|a| a.id == "codebuddy").unwrap().name, "CodeBuddy CLI (WorkBuddy)");
         assert!(agents.iter().all(|a| a.kind == AgentKind::Cli && a.running));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn profile_fallbacks_require_real_cli_entries_and_node_for_workbuddy() {
+        let dir = scratch_dir("fallbacks");
+        for rel in [
+            ".qoder/bin/qodercli/qodercli.exe",
+            "AppData/Local/Programs/WorkBuddyAI/resources/app.asar.unpacked/cli/dist/codebuddy-lite-wb.mjs",
+            ".gemini/bin/agy.exe",
+        ] {
+            let p = dir.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"").unwrap();
+        }
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("node.exe"), b"").unwrap();
+        let path = std::env::join_paths([bin.as_path()]).unwrap().into_string().unwrap();
+        let agents = detect_with(&path, &dir, |_| false);
+        let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(ids, ["qoder", "codebuddy", "agy"]);
+        assert!(agents.iter().find(|a| a.id == "codebuddy").unwrap().location.ends_with("codebuddy-lite-wb.mjs"));
+        std::fs::remove_file(bin.join("node.exe")).unwrap();
+        let agents = detect_with(&path, &dir, |_| false);
+        assert!(agents.iter().all(|a| a.id != "codebuddy"));
+        assert!(agents.iter().any(|a| a.id == "agy"));
         std::fs::remove_dir_all(&dir).ok();
     }
 
