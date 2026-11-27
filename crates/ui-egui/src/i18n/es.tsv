@@ -2829,3 +2829,8 @@ curves	Smooth	Suavizar
 	Sent to {printer}	Enviado a {printer}
 	set in Print Settings…	se establece en Ajustes de impresión…
 	ICO is limited to 256 × 256 pixels	ICO está limitado a 256 × 256 píxeles
+	AI Agent	Agente de IA
+	AI Agent Panel	Panel de agente de IA
+	Connect Agent	Conectar agente
+	Disconnect Agent	Desconectar agente
+	Refresh Agent List	Actualizar lista de agentes

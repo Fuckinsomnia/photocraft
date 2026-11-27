@@ -3146,3 +3146,8 @@ curves	Smooth	Lisser
 	Sent to {printer}	Envoyé à {printer}
 	set in Print Settings…	défini dans les paramètres d’impression…
 	ICO is limited to 256 × 256 pixels	Le format ICO est limité à 256 × 256 pixels
+	AI Agent	Agent IA
+	AI Agent Panel	Panneau d'agent IA
+	Connect Agent	Connecter l'agent
+	Disconnect Agent	Déconnecter l'agent
+	Refresh Agent List	Actualiser la liste des agents

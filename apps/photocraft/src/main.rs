@@ -51,6 +51,7 @@ mod services;
 mod tablet;
 mod ui_state;
 mod window_frame;
+mod window_rescue;
 
 use photocraft_engine::Session;
 use photocraft_ui_egui::PhotocraftApp;
@@ -488,6 +489,8 @@ fn main() -> eframe::Result {
             // The custom title bar's undecorated window must stay borderless, or its caption and
             // border offset the content and the pointer on some Windows systems (#2246).
             app.services.window_frame = window_frame::service(cc, custom_titlebar);
+            // A geometry restored wholly off-screen gets moved back onto a monitor once.
+            window_rescue::apply(cc);
             // Linux: the desktop's caption buttons (GNOME's, KDE's) on the sides its layout puts them.
             if custom_titlebar {
                 app.services.caption_style = caption_style::service();

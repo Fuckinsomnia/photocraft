@@ -2754,3 +2754,8 @@ curves	Smooth	平滑
 	Sent to {printer}	已发送到 {printer}
 	set in Print Settings…	在打印设置中设置…
 	ICO is limited to 256 × 256 pixels	ICO 最大为 256 × 256 像素
+	AI Agent	AI 智能体
+	AI Agent Panel	AI 智能体面板
+	Connect Agent	连接智能体
+	Disconnect Agent	断开智能体
+	Refresh Agent List	刷新智能体列表

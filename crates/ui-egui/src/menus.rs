@@ -17,7 +17,7 @@ pub(crate) fn modal_allows(app: &PhotocraftApp, id: &str) -> bool {
 }
 
 /// Top-level menus in Photoshop order.
-pub const TOP_MENUS: [&str; 10] = ["File", "Edit", "Image", "Layer", "Type", "Select", "Filter", "View", "Window", "Help"];
+pub const TOP_MENUS: [&str; 11] = ["File", "Edit", "Image", "Layer", "Type", "Select", "Filter", "View", "Window", "AI Agent", "Help"];
 
 /// UI-level commands (handled by the shell rather than the engine): id, label, menu, shortcut.
 pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
@@ -73,6 +73,10 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.togglePanels", "Show/Hide All Panels", &[], Some("Tab")),
     ("window.toggle.dock", "Show/Hide Panels", &[], Some("Shift+Tab")),
     ("window.toggle.options", "Options", &["Window"], None),
+    ("window.toggle.aiAgent", "AI Agent Panel", &["AI Agent"], None),
+    ("aiAgent.refresh", "Refresh Agent List", &["AI Agent"], None),
+    ("aiAgent.connect", "Connect Agent", &["AI Agent"], None),
+    ("aiAgent.disconnect", "Disconnect Agent", &["AI Agent"], None),
     // Photoshop's Ctrl+Tab and Ctrl+Shift+Tab, on macOS too (⌘Tab belongs to the system, #2340).
     ("window.nextDocument", "Next Document", &[], Some("Ctrl+Tab")),
     ("window.previousDocument", "Previous Document", &[], Some("Ctrl+Shift+Tab")),
@@ -206,6 +210,14 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     }
     // Window › Gradients, Patterns, Styles, Shapes, Tool Presets, Clone Source.
     if let Some(r) = crate::preset_panels::menu(app, id, &params) {
+        return r;
+    }
+    // AI Agent › Refresh Agent List.
+    if let Some(r) = crate::ai_agent::command(app, ctx, id, &params) {
+        return r;
+    }
+    // AI Agent › Connect / Disconnect / chat send.
+    if let Some(r) = crate::ai_chat::command(app, ctx, id, &params) {
         return r;
     }
     // Character/Paragraph Styles, Glyphs, Edit › Check Spelling dialog.
@@ -674,6 +686,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 "toolbar" => &mut p.toolbar,
                 "options" => &mut p.options_bar,
                 "brushSettings" => &mut p.brush_settings,
+                "aiAgent" => &mut p.ai_agent,
                 "dock" => &mut p.dock,
                 _ => return Err(format!("unknown panel in {t}")),
             };
@@ -753,6 +766,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         "file.save" | "file.saveAs" | "file.export.exportAs" | "file.export.quickExportAsPng" => {
             app.session.active().is_some() && app.services.export.is_some()
         }
+        "aiAgent.refresh" => true,
+        "aiAgent.connect" => true,
+        "aiAgent.disconnect" | "aiAgent.send" | "aiAgent.generate" => app.ui.ai_chat.agent.is_some(),
         i if i.starts_with("window.toggle.") => true,
         "window.togglePanels" => true,
         // With one document open the key stays quiet, as in Photoshop, rather than reporting why.
@@ -877,6 +893,7 @@ fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
         "window.toggle.color" => p.color,
         "window.toggle.navigator" => p.navigator,
         "window.toggle.toolbar" => p.toolbar,
+        "window.toggle.aiAgent" => p.ai_agent,
         "window.toggle.dock" => p.dock,
         "window.togglePanels" => p.toolbar || p.options_bar || p.dock,
         "window.toggle.options" => p.options_bar,
@@ -1591,6 +1608,23 @@ mod tests {
         assert_eq!(app.session.prefs().interface.appearance_mode, AppearanceMode::Dark);
         assert_eq!(checked(&app, "window.theme.system"), Some(false));
         assert_eq!(checked(&app, "window.theme.studio"), Some(true));
+    }
+
+    #[test]
+    fn ai_agent_menu_lists_the_panel_toggle_and_invoking_it_flips_the_window() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        let ctx = egui::Context::default();
+        assert!(TOP_MENUS.contains(&"AI Agent"));
+        let items = menu_items(&app);
+        let item = items.iter().find(|i| i.id == "window.toggle.aiAgent").unwrap();
+        assert_eq!(item.path, ["AI Agent"]);
+        assert!(item.enabled);
+        assert_eq!(checked(&app, "window.toggle.aiAgent"), Some(false));
+        invoke(&mut app, &ctx, "window.toggle.aiAgent", json!({})).unwrap();
+        assert!(app.ui.panels.ai_agent);
+        assert_eq!(checked(&app, "window.toggle.aiAgent"), Some(true));
+        invoke(&mut app, &ctx, "window.toggle.aiAgent", json!({})).unwrap();
+        assert!(!app.ui.panels.ai_agent);
     }
 
     #[test]

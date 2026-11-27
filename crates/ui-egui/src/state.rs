@@ -413,6 +413,9 @@ pub struct Panels {
     /// floating window rather than a modal so the canvas stays usable while a gradient is edited.
     #[serde(default)]
     pub gradient_editor: bool,
+    /// AI Agent › AI Agent Panel: the AI Agent dock group (`ai_agent`).
+    #[serde(default)]
+    pub ai_agent: bool,
 }
 
 impl Default for Panels {
@@ -434,6 +437,7 @@ impl Default for Panels {
             rail: true,
             menu_bar: true,
             gradient_editor: false,
+            ai_agent: false,
         }
     }
 }
@@ -1031,6 +1035,8 @@ pub struct DockTabs {
     pub history: usize,
     /// Character | Paragraph.
     pub character: usize,
+    /// AI Agent (single tab).
+    pub ai_agent: usize,
 }
 
 /// Color panel state.
@@ -1174,6 +1180,12 @@ pub struct UiState {
     #[serde(default)]
     pub view: crate::view_cmds::ViewOptions,
     pub panels: Panels,
+    /// AI Agent panel: detected agents and whether a scan completed (see `ai_agent`).
+    #[serde(default)]
+    pub ai_agent: crate::ai_agent::AiAgentUi,
+    /// AI Agent chat: connected agent, models, transcript and draft input (see `ai_chat`).
+    #[serde(default)]
+    pub ai_chat: crate::ai_chat::AiChatUi,
     /// Views per open document (index-aligned with the session's documents).
     pub views: Vec<View>,
     pub dialogs: Vec<Dialog>,
@@ -1312,6 +1324,8 @@ impl Default for UiState {
             direct_selection: Default::default(),
             selected_path: None,
             panels: Panels::default(),
+            ai_agent: Default::default(),
+            ai_chat: Default::default(),
             views: Vec::new(),
             dialogs: Vec::new(),
             windows: Vec::new(),

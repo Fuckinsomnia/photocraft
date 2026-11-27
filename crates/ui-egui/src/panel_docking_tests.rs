@@ -96,6 +96,31 @@ fn ordinary_panel_tab_drag_enters_shared_docking_and_can_redock_into_another_tab
 }
 
 #[test]
+fn floating_ai_agent_window_resizes_by_its_corner_handle() {
+    let mut app = app();
+    app.ui.ai_agent.scanned = true;
+    app.run("window.panel.float", json!({"panel":"aiAgent","x":100,"y":100,"width":289,"height":335})).unwrap();
+    let mut h = harness(app, vec2(1280.0, 800.0));
+    let corner = h.get_by_label("Resize panel window").rect().center();
+    drag(&mut h, corner, corner + vec2(120.0, 90.0));
+    let rect = h.state().ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels == ["aiAgent"]).unwrap().rect;
+    assert!(rect[2] > 380.0 && rect[3] > 400.0, "corner drag must grow the floating window: {rect:?}");
+    let right = h.get_by_label("Resize panel window right edge").rect().center();
+    drag(&mut h, right, right + vec2(60.0, 0.0));
+    let rect = h.state().ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels == ["aiAgent"]).unwrap().rect;
+    assert!(rect[2] > 440.0 && (rect[3] - 425.0).abs() < 2.0, "right edge drag widens only: {rect:?}");
+    let left = h.get_by_label("Resize panel window left edge").rect().center();
+    let before = rect;
+    drag(&mut h, left, left + vec2(-50.0, 0.0));
+    let rect = h.state().ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels == ["aiAgent"]).unwrap().rect;
+    assert!((rect[0] - (before[0] - 50.0)).abs() < 2.0 && (rect[2] - (before[2] + 50.0)).abs() < 2.0, "left edge drag keeps the right side fixed: {rect:?}");
+    let bottom = h.get_by_label("Resize panel window bottom edge").rect().center();
+    drag(&mut h, bottom, bottom + vec2(0.0, 40.0));
+    let rect = h.state().ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels == ["aiAgent"]).unwrap().rect;
+    assert!(rect[3] > 460.0, "bottom edge drag grows the height: {rect:?}");
+}
+
+#[test]
 fn saved_workspace_restores_the_custom_tree_and_hidden_panel_placement() {
     let mut app = app();
     let ctx = egui::Context::default();
